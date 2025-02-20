@@ -3,17 +3,17 @@ package util
 import (
 	"math"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mattn/go-isatty"
-	"github.com/mattn/go-runewidth"
 	"github.com/rivo/uniseg"
 )
 
 // StringWidth returns string width where each CR/LF character takes 1 column
 func StringWidth(s string) int {
-	return runewidth.StringWidth(s) + strings.Count(s, "\n") + strings.Count(s, "\r")
+	return uniseg.StringWidth(s) + strings.Count(s, "\n") + strings.Count(s, "\r")
 }
 
 // RunesWidth returns runes width
@@ -138,14 +138,20 @@ func DurWithin(
 	return val
 }
 
-// IsTty returns true if stdin is a terminal
-func IsTty() bool {
-	return isatty.IsTerminal(os.Stdin.Fd())
+// IsTty returns true if the file is a terminal
+func IsTty(file *os.File) bool {
+	fd := file.Fd()
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
 }
 
-// ToTty returns true if stdout is a terminal
-func ToTty() bool {
-	return isatty.IsTerminal(os.Stdout.Fd())
+// RunOnce runs the given function only once
+func RunOnce(f func()) func() {
+	once := Once(true)
+	return func() {
+		if once() {
+			f()
+		}
+	}
 }
 
 // Once returns a function that returns the specified boolean value only once
@@ -153,7 +159,7 @@ func Once(nextResponse bool) func() bool {
 	state := nextResponse
 	return func() bool {
 		prevState := state
-		state = false
+		state = !nextResponse
 		return prevState
 	}
 }
@@ -165,7 +171,7 @@ func RepeatToFill(str string, length int, limit int) string {
 	output := strings.Repeat(str, times)
 	if rest > 0 {
 		for _, r := range str {
-			rest -= runewidth.RuneWidth(r)
+			rest -= uniseg.StringWidth(string(r))
 			if rest < 0 {
 				break
 			}
@@ -176,4 +182,47 @@ func RepeatToFill(str string, length int, limit int) string {
 		}
 	}
 	return output
+}
+
+// ToKebabCase converts the given CamelCase string to kebab-case
+func ToKebabCase(s string) string {
+	name := ""
+	for i, r := range s {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			name += "-"
+		}
+		name += string(r)
+	}
+	return strings.ToLower(name)
+}
+
+// CompareVersions compares two version strings
+func CompareVersions(v1, v2 string) int {
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+
+	atoi := func(s string) int {
+		n, e := strconv.Atoi(s)
+		if e != nil {
+			return 0
+		}
+		return n
+	}
+
+	for i := 0; i < Max(len(parts1), len(parts2)); i++ {
+		var p1, p2 int
+		if i < len(parts1) {
+			p1 = atoi(parts1[i])
+		}
+		if i < len(parts2) {
+			p2 = atoi(parts2[i])
+		}
+
+		if p1 > p2 {
+			return 1
+		} else if p1 < p2 {
+			return -1
+		}
+	}
+	return 0
 }
